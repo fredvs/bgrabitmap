@@ -125,7 +125,7 @@ type
   { RGBA bitmap that can be used with OpenGL by converting it into a texture }
   TBGLBitmap = class(TBGLCustomBitmap)
   protected
-    class function GetOpenGLMaxTexSize: integer; override;
+    function GetOpenGLMaxTexSize: integer; override;
   public
     function NewBitmap: TBGLBitmap; overload; override;
     function NewBitmap(AWidth, AHeight: integer): TBGLBitmap; overload; override;
@@ -226,8 +226,6 @@ type
     destructor Destroy; override;
   end;
 
-function GetOpenGLVersion: integer; // major * 100 + minor
-
 implementation
 
 uses BGRABlurGL, BGRATransform{$IFDEF BGRABITMAP_USE_LCL}, BGRAText, BGRATextFX{$ENDIF};
@@ -247,42 +245,6 @@ begin
     opTriangles: result := GL_TRIANGLES;
   else
     raise exception.Create('Unknown primitive type');
-  end;
-end;
-
-var
-  OpenGLVersion: integer = -1; // major * 100 + minor
-
-function GetOpenGLVersion: integer;
-var
-  versionStr, minorStr: string;
-  indexPoint, indexPoint2, major, minor, err: integer;
-begin
-  if OpenGLVersion = -1 then
-  begin
-    versionStr := glGetString(GL_VERSION);
-    indexPoint := versionStr.IndexOf('.');
-    if indexPoint <> -1 then
-    begin
-      minorStr := versionStr.Substring(indexPoint + 1);
-      indexPoint2 := minorStr.IndexOf('.');
-      if indexPoint2 = -1 then indexPoint2 := length(minorStr);
-      val(minorStr.Substring(0, indexPoint2), minor, err);
-      if minor > 99 then minor := 99;
-      val(versionStr.Substring(0, indexPoint), major, err);
-    end else
-      val(versionStr, major, err);
-    OpenGLVersion := major * 100 + minor;
-  end;
-  exit(OpenGLVersion);
-end;
-
-procedure NeedOpenGL3_0;
-begin
-  if glGenFramebuffers = nil then
-  begin
-    if not Load_GL_version_3_0 then
-      raise exception.Create('Cannot load OpenGL 3.0');
   end;
 end;
 
@@ -322,13 +284,11 @@ type
   protected
     FFlipX,FFlipY: Boolean;
 
-    class function GetOpenGLMaxTexSize: integer; override;
-    class function GetNonPowerOfTwoSizeSupport: boolean; override;
+    function GetOpenGLMaxTexSize: integer; override;
     function CreateOpenGLTexture(ARGBAData: PLongWord; AAllocatedWidth, AAllocatedHeight, AActualWidth, AActualHeight: integer; RGBAOrder: boolean): TBGLTextureHandle; override;
     procedure UpdateOpenGLTexture(ATexture: TBGLTextureHandle; ARGBAData: PLongWord; AAllocatedWidth, AAllocatedHeight, AActualWidth,AActualHeight: integer; RGBAOrder: boolean); override;
     class function SupportsBGRAOrder: boolean; override;
     procedure SetOpenGLTextureSize(ATexture: TBGLTextureHandle; AAllocatedWidth, AAllocatedHeight, AActualWidth, AActualHeight: integer); override;
-    function GetOpenGLAllocatedSize(ATexture: TBGLTextureHandle): TSize; override;
     procedure ComputeOpenGLFramesCoord(ATexture: TBGLTextureHandle; FramesX: Integer=1; FramesY: Integer=1); override;
     function GetOpenGLFrameCount(ATexture: TBGLTextureHandle): integer; override;
     function GetEmptyTexture: TBGLTextureHandle; override;
@@ -518,7 +478,8 @@ end;
 constructor TBGLFrameBuffer.Create(AWidth, AHeight: integer);
 var frameBufferStatus: GLenum;
 begin
-  NeedOpenGL3_0;
+  if not Load_GL_version_3_0 then
+      raise exception.Create('Cannot load OpenGL 3.0');
 
   FWidth := AWidth;
   FHeight := AHeight;
@@ -1370,15 +1331,10 @@ end;
 
 { TBGLTexture }
 
-class function TBGLTexture.GetOpenGLMaxTexSize: integer;
+function TBGLTexture.GetOpenGLMaxTexSize: integer;
 begin
   result := 0;
   glGetIntegerv( GL_MAX_TEXTURE_SIZE, @result );
-end;
-
-class function TBGLTexture.GetNonPowerOfTwoSizeSupport: boolean;
-begin
-  result := GetOpenGLVersion >= 200;
 end;
 
 function TBGLTexture.CreateOpenGLTexture(ARGBAData: PLongWord;
@@ -1428,13 +1384,6 @@ begin
     AllocatedWidth := AAllocatedWidth;
     AllocatedHeight := AAllocatedHeight;
   end;
-end;
-
-function TBGLTexture.GetOpenGLAllocatedSize(ATexture: TBGLTextureHandle): TSize;
-begin
-  if ATexture = nil then exit(Size(0, 0));
-  with TOpenGLTexture(ATexture^) do
-    result := Size(AllocatedWidth, AllocatedHeight);
 end;
 
 procedure TBGLTexture.ComputeOpenGLFramesCoord(ATexture: TBGLTextureHandle;
@@ -1811,9 +1760,10 @@ end;
 
 { TBGLBitmap }
 
-class function TBGLBitmap.GetOpenGLMaxTexSize: integer;
+function TBGLBitmap.GetOpenGLMaxTexSize: integer;
 begin
-  result := TBGLTexture.GetOpenGLMaxTexSize;
+  result := 0;
+  glGetIntegerv( GL_MAX_TEXTURE_SIZE, @result );
 end;
 
 function TBGLBitmap.NewBitmap: TBGLBitmap;
